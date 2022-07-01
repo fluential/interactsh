@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"net/http"
+	"net/http/pprof"
+
 	"github.com/projectdiscovery/folderutil"
 	"github.com/projectdiscovery/goflags"
 	"github.com/projectdiscovery/gologger"
@@ -27,6 +30,7 @@ import (
 )
 
 var (
+	profiling             = false
 	defaultConfigLocation = filepath.Join(folderutil.HomeDirOrDefault("."), ".config/interactsh-server/config.yaml")
 )
 
@@ -73,6 +77,7 @@ func main() {
 		flagSet.StringVar(&cliOptions.FTPDirectory, "ftp-dir", "", "ftp directory - temporary if not specified"),
 	)
 	flagSet.CreateGroup("debug", "Debug",
+		flagSet.BoolVar(&profiling, "profile", false, fmt.Sprintf("enable http based profiler on %s", localProfilingURL)),
 		flagSet.BoolVar(&cliOptions.Version, "version", false, "show version of the project"),
 		flagSet.BoolVar(&cliOptions.Debug, "debug", false, "start interactsh server in debug mode"),
 	)
@@ -82,6 +87,11 @@ func main() {
 	}
 
 	options.ShowBanner()
+
+	// If asked by user, run local pprof server
+	if profiling {
+		go runPprofLocalServer()
+	}
 
 	if cliOptions.Version {
 		gologger.Info().Msgf("Current Version: %s\n", options.Version)
@@ -343,6 +353,18 @@ func main() {
 	for range c {
 		os.Exit(1)
 	}
+}
+
+const localProfilingURL = "localhost:8082"
+
+func runPprofLocalServer() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	http.ListenAndServe(localProfilingURL, mux)
 }
 
 func getPublicIP() (string, error) {
